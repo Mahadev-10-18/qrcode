@@ -53,8 +53,7 @@ async def test_contact_rate_limiting(client, user_a):
         result = await session.exec(
             select(ContactEvent)
             .where(ContactEvent.tag_id == tag_id)
-            .order_index_by(ContactEvent.created_at) if hasattr(ContactEvent, "order_index_by")
-            else select(ContactEvent).where(ContactEvent.tag_id == tag_id).order_by(ContactEvent.created_at)
+            .order_by(ContactEvent.created_at)
         )
         events = result.all()
         assert len(events) == 6, "Expected exactly 6 logged contact events"

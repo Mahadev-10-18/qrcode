@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -52,3 +52,16 @@ async def login(request: Request, login_data: LoginData):
 
         # Return the user ID as token (stub JWT simulation)
         return {"x_user_id": str(user.id)}
+
+
+from ..auth_stub import get_current_user
+
+@router.get("/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "phone_number": current_user.phone_number,
+        "plan": current_user.plan
+    }
+

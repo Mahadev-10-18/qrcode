@@ -7,7 +7,8 @@ export default function PublicTagView() {
   const [tagData, setTagData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [contactStatus, setContactStatus] = useState(null); // null, 'loading', 'success', 'error'
+  const [contactStatus, setContactStatus] = useState(null);
+  const [phone, setPhone] = useState('');
 
   useEffect(() => {
     const fetchTag = async () => {
@@ -32,16 +33,17 @@ export default function PublicTagView() {
   }, [id]);
 
   const handleContact = async () => {
+    if (!phone.trim()) return;
     setContactStatus('loading');
     try {
       const response = await fetch(`/api/t/${id}/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'text' })
+        body: JSON.stringify({ method: 'text', finder_phone: phone })
       });
       if (!response.ok) throw new Error('Failed to contact');
       setContactStatus('success');
-    } catch (err) {
+    } catch {
       setContactStatus('error');
     }
   };
@@ -89,14 +91,24 @@ export default function PublicTagView() {
         <div className="action-section">
           <p>{tagData.cta || "Please contact the owner to return it."}</p>
           
-          <button 
-            className={`contact-btn ${contactStatus}`} 
-            onClick={handleContact}
-            disabled={contactStatus === 'loading' || contactStatus === 'success'}
-          >
-            {contactStatus === 'loading' && <Loader2 className="spinner-small" />}
-            {contactStatus === 'success' ? 'Owner Notified!' : 'Notify Owner'}
-          </button>
+          <div className="phone-input-group">
+            <input
+              type="tel"
+              placeholder="Your phone number (e.g. +15551234567)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={contactStatus === 'loading' || contactStatus === 'success'}
+              className="phone-input"
+            />
+            <button 
+              className={`contact-btn ${contactStatus}`} 
+              onClick={handleContact}
+              disabled={contactStatus === 'loading' || contactStatus === 'success' || !phone.trim()}
+            >
+              {contactStatus === 'loading' && <Loader2 className="spinner-small" />}
+              {contactStatus === 'success' ? 'Owner Notified!' : 'Notify Owner'}
+            </button>
+          </div>
           
           {contactStatus === 'error' && (
             <p className="error-text">Failed to send notification. Please try again.</p>

@@ -65,7 +65,7 @@ async def test_pdf_sheet_async_generation(client, user_a):
 
     # Poll job status
     completed = False
-    for _ in range(10):  # poll up to 10 times
+    for _ in range(10):
         poll_resp = await client.get(f"/jobs/{job_id}", headers=headers)
         if poll_resp.status_code == 200:
             if poll_resp.headers.get("content-type") == "application/pdf":

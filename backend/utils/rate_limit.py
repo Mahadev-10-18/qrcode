@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 from fastapi import Request, HTTPException, status
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -18,7 +22,7 @@ def get_client_ip(request: Request) -> str:
 
 async def check_rate_limit(key: str, limit: int, window_minutes: int, error_msg: str = "Rate limit exceeded.") -> None:
     async with AsyncSession(engine) as session:
-        cutoff = datetime.utcnow() - timedelta(minutes=window_minutes)
+        cutoff = _utcnow() - timedelta(minutes=window_minutes)
         stmt = select(func.count(RateLimitEvent.id)).where(
             RateLimitEvent.key == key,
             RateLimitEvent.created_at >= cutoff

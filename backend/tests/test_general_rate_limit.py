@@ -2,7 +2,11 @@ import pytest
 from fastapi import status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from backend.db import engine
 from backend.models import RateLimitEvent
@@ -27,7 +31,7 @@ async def test_login_rate_limiting_block_and_reset(client):
         result = await session.exec(select(RateLimitEvent))
         events = result.all()
         for event in events:
-            event.created_at = datetime.utcnow() - timedelta(minutes=16)
+            event.created_at = _utcnow() - timedelta(minutes=16)
             session.add(event)
         await session.commit()
 

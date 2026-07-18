@@ -65,7 +65,7 @@ async def update_tag(
     current_user=Depends(get_current_user),
 ):
     if tag_in.status and tag_in.status not in {TagStatus.ACTIVE, TagStatus.PAUSED, TagStatus.LOST_CONFIRMED}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid status")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid status")
     async with AsyncSession(engine) as session:
         result = await session.exec(select(Tag).where(Tag.id == tag_id))
         tag = result.one_or_none()

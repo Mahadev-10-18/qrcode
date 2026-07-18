@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -11,7 +12,16 @@ from .utils.sentry import init_sentry
 setup_logging()
 init_sentry()
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from .utils.cache import cache
+    await cache.connect()
+    await init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/health")
@@ -57,10 +67,3 @@ app.include_router(public.router)
 app.include_router(tags_pdf.router)
 app.include_router(auth.router)
 app.include_router(jobs.router)
-
-
-@app.on_event("startup")
-async def on_startup():
-    from .utils.cache import cache
-    await cache.connect()
-    await init_db()

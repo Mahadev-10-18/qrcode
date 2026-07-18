@@ -92,7 +92,7 @@ async def get_tag_pdf(tag_id: str, current_user: User = Depends(get_current_user
 @router.post("/sheet")
 async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
     if req.layout not in (6, 12):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid layout")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid layout")
         
     async with AsyncSession(engine) as session:
         # Validate that the user owns all tag_ids first
