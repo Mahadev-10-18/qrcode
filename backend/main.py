@@ -1,24 +1,57 @@
-from .db import init_db
-from .routers import tags_pdf
-from .routes import tags, public, auth, jobs
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
+from .routes import tags, public, auth, jobs
+from .routers import tags_pdf
+from .db import init_db
 from .utils.logging_setup import setup_logging
+from .utils.sentry import init_sentry
+
 setup_logging()
-
-# Import routers from correct modules
-
+init_sentry()
 
 app = FastAPI()
-
-# Health endpoint
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from .db import engine
+    from .utils.cache import cache
 
-# Include routers
+    db_up = False
+    cache_up = False
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_up = True
+    except Exception:
+        pass
+
+    try:
+        if cache.redis_client:
+            await cache.redis_client.ping()
+        cache_up = True
+    except Exception:
+        pass
+
+    if db_up and cache_up:
+        return {"status": "ok", "database": "up", "cache": "up"}
+
+    body = {"status": "unhealthy"}
+    if not db_up:
+        body["database"] = "down"
+    if not cache_up:
+        body["cache"] = "down"
+    return JSONResponse(content=body, status_code=503)
+
+
+@app.get("/debug-sentry")
+async def debug_sentry():
+    raise RuntimeError("Test Sentry exception — safe to ignore")
+
+
 app.include_router(tags.router)
 app.include_router(public.router)
 app.include_router(tags_pdf.router)
@@ -26,7 +59,6 @@ app.include_router(auth.router)
 app.include_router(jobs.router)
 
 
-# Initialize DB on startup
 @app.on_event("startup")
 async def on_startup():
     from .utils.cache import cache

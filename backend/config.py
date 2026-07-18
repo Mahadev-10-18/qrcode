@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     app_domain: str = Field(default="http://localhost", validation_alias="APP_DOMAIN")
     domain: str = Field(default="example.com", validation_alias="DOMAIN")
     redis_url: str = Field(default="memory", validation_alias="REDIS_URL")
+    sentry_dsn: str = Field(default="", validation_alias="SENTRY_DSN")
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -55,12 +55,24 @@ def render_grid_html(tags, per_page: int = 6) -> str:
         }}
         .qr-img {{ width: 40mm; height: 40mm; }}
         .label {{ margin-top: 2mm; font-size: 10pt; }}
+        .warning-footer {{
+            margin-top: 5mm;
+            text-align: center;
+            font-size: 9pt;
+            font-style: italic;
+            color: #555;
+        }}
     </style>
     </head><body>
     <div class='grid'>
     {cells_html}
     </div>
+    <div class='warning-footer'>
+        Warning: This code represents ONE item — create a separate tag per physical item, don't reuse this code elsewhere.
+    </div>
     </body></html>
+
+
     """
     return html
 

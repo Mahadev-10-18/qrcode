@@ -75,3 +75,34 @@ async def test_pdf_sheet_async_generation(client, user_a):
         await asyncio.sleep(0.5)
 
     assert completed is True
+
+
+@pytest.mark.asyncio
+async def test_pdf_sheet_duplicate_tags_detection(client, user_a):
+    headers = {"X-User-Id": str(user_a.id)}
+    
+    # Create 2 tags
+    tag_ids = []
+    async with AsyncSession(engine) as session:
+        for i in range(2):
+            tag = Tag(owner_id=user_a.id, label=f"Item {i}")
+            session.add(tag)
+            await session.commit()
+            await session.refresh(tag)
+            tag_ids.append(str(tag.id))
+            
+    # Case 1: Repeated tag ID
+    repeat_ids = [tag_ids[0], tag_ids[0], tag_ids[1]]
+    resp1 = await client.post("/tags/sheet", json={"tag_ids": repeat_ids, "layout": 6}, headers=headers)
+    assert resp1.status_code == status.HTTP_200_OK
+    data1 = resp1.json()
+    assert "duplicate_tag_ids" in data1
+    assert data1["duplicate_tag_ids"] == [tag_ids[0]]
+    
+    # Case 2: No repeated tag IDs
+    resp2 = await client.post("/tags/sheet", json={"tag_ids": tag_ids, "layout": 6}, headers=headers)
+    assert resp2.status_code == status.HTTP_200_OK
+    data2 = resp2.json()
+    assert "duplicate_tag_ids" in data2
+    assert data2["duplicate_tag_ids"] == []
+

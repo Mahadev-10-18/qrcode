@@ -15,7 +15,7 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=Tag)
-async def create_tag(tag_in: TagCreate, request: Request, current_user=Depends(get_current_user)):
+async def create_tag(tag_in: TagCreate, request: Request, response: Response, current_user=Depends(get_current_user)):
     ip = get_client_ip(request)
     # tag creation rate limit: 10 attempts per IP per 60 minutes
     await check_rate_limit(
@@ -30,6 +30,7 @@ async def create_tag(tag_in: TagCreate, request: Request, current_user=Depends(g
 
         await session.commit()
         await session.refresh(tag)
+        response.headers["X-Tag-Usage-Warning"] = "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."
         return tag
 
 
@@ -79,7 +80,14 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
         cache_key = f"qr:{tag_id}"
         cached_data = await cache.get(cache_key)
         if cached_data:
-            return Response(content=cached_data, media_type="image/png", headers={"X-Cache": "HIT"})
+            return Response(
+                content=cached_data,
+                media_type="image/png",
+                headers={
+                    "X-Cache": "HIT",
+                    "X-Tag-Usage-Warning": "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."
+                }
+            )
 
         from ..config import settings
         domain = settings.app_domain
@@ -94,4 +102,11 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
         qr_bytes = buf.getvalue()
 
         await cache.set(cache_key, qr_bytes)
-        return Response(content=qr_bytes, media_type="image/png", headers={"X-Cache": "MISS"})
+        return Response(
+            content=qr_bytes,
+            media_type="image/png",
+            headers={
+                "X-Cache": "MISS",
+                "X-Tag-Usage-Warning": "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."
+            }
+        )

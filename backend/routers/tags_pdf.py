@@ -81,15 +81,19 @@ async def get_tag_pdf(tag_id: str, current_user: User = Depends(get_current_user
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
         html = render_grid_html([tag], per_page=1)
         pdf_bytes = html_to_pdf(html)
-        return Response(content=pdf_bytes, media_type="application/pdf")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"X-Tag-Usage-Warning": "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."}
+        )
+
 
 
 @router.post("/sheet")
-async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks,
-                          current_user: User = Depends(get_current_user)):
+async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
     if req.layout not in (6, 12):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid layout")
-
+        
     async with AsyncSession(engine) as session:
         # Validate that the user owns all tag_ids first
         for tid in req.tag_ids:
@@ -101,14 +105,28 @@ async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks,
             tag = result.one_or_none()
             if not tag or tag.owner_id != current_user.id:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+                
+        # Identify duplicates
+        seen = set()
+        duplicates = set()
+        for tid in req.tag_ids:
+            if tid in seen:
+                duplicates.add(tid)
+            else:
+                seen.add(tid)
+        duplicate_tag_ids = list(duplicates)
 
         # Create Job record
         job = Job(status="pending")
         session.add(job)
         await session.commit()
         await session.refresh(job)
-
+        
         # Enqueue background task
         background_tasks.add_task(generate_pdf_sheet_task, job.id, req.tag_ids, req.layout)
-
-        return {"job_id": str(job.id), "status": job.status}
+        
+        return {
+            "job_id": str(job.id),
+            "status": job.status,
+            "duplicate_tag_ids": duplicate_tag_ids
+        }
