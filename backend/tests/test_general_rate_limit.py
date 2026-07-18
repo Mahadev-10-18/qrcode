@@ -62,8 +62,8 @@ async def test_signup_rate_limiting(client):
 
 
 @pytest.mark.asyncio
-async def test_tag_creation_rate_limiting(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_tag_creation_rate_limiting(client, paid_user):
+    headers = {"X-User-Id": str(paid_user.id)}
 
     # tag limit is 10 per hour
     for i in range(10):

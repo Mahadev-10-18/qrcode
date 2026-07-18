@@ -11,6 +11,7 @@ class User(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
     email: EmailStr = Field(index=True, nullable=False, unique=True)
     phone_number: Optional[str] = Field(default=None, nullable=True)
+    plan: str = Field(default="free")  # "free" or "paid"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     tags: List["Tag"] = Relationship(back_populates="owner")
 

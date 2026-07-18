@@ -24,6 +24,23 @@ async def create_tag(tag_in: TagCreate, request: Request, response: Response, cu
         window_minutes=60,
         error_msg="Tag creation limit exceeded. Please try again later."
     )
+
+    # Free-tier enforcement: max 2 active tags
+    if current_user.plan == "free":
+        async with AsyncSession(engine) as session:
+            result = await session.exec(
+                select(Tag).where(
+                    Tag.owner_id == current_user.id,
+                    Tag.status == TagStatus.ACTIVE
+                )
+            )
+            active_count = len(result.all())
+            if active_count >= 2:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Free plan is limited to 2 active tags. Upgrade to create more."
+                )
+
     async with AsyncSession(engine) as session:
         tag = Tag(label=tag_in.label, owner_id=current_user.id)
         session.add(tag)

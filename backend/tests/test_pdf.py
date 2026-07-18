@@ -4,9 +4,9 @@ from io import BytesIO
 
 
 @pytest.mark.asyncio
-async def test_pdf_sheet_one_page_for_three_tags(client, user_a):
+async def test_pdf_sheet_one_page_for_three_tags(client, paid_user):
     """3 tags on a 6-per-page layout should produce exactly 1 PDF page."""
-    headers = {"X-User-Id": str(user_a.id)}
+    headers = {"X-User-Id": str(paid_user.id)}
     tag_ids = []
     for label in ["One", "Two", "Three"]:
         resp = await client.post("/tags/", json={"label": label}, headers=headers)

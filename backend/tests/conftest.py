@@ -28,9 +28,9 @@ async def client():
         yield ac
 
 
-async def _make_user(email: str, phone: str) -> User:
+async def _make_user(email: str, phone: str, plan: str = "free") -> User:
     async with AsyncSession(engine) as session:
-        u = User(email=email, phone_number=phone)
+        u = User(email=email, phone_number=phone, plan=plan)
         session.add(u)
         await session.commit()
         await session.refresh(u)
@@ -47,8 +47,14 @@ async def user_b():
     return await _make_user(f"b_{uuid.uuid4().hex[:6]}@example.com", "2222222222")
 
 
+@pytest_asyncio.fixture
+async def paid_user():
+    return await _make_user(f"paid_{uuid.uuid4().hex[:6]}@example.com", "3333333333", "paid")
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def clear_rate_limits():
     async with AsyncSession(engine) as session:
         await session.execute(text("DELETE FROM ratelimitevent"))
         await session.commit()
+

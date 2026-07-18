@@ -11,7 +11,7 @@
 
 ## Database Schema (source of truth)
 ```
-users: id (uuid, pk), email, phone_number (private, never exposed), created_at
+users: id (uuid, pk), email, phone_number (private, never exposed), plan (free|paid, default free), created_at
 
 tags: id (uuid, pk — encoded in the QR), owner_id (fk), label, status (active|paused|lost_confirmed), created_at
 
@@ -24,6 +24,7 @@ contact_events: id (uuid, pk), tag_id (fk), finder_contact_method (call|text), c
 - `phone_number` is never returned in any API response except to its **own owner**.
 - Contact requests are rate‑limited per tag (**5 per hour**) once the relay ships.
 - No credential or configuration secret is ever committed. The config module `backend/config.py` is the single source from which secrets are read.
+- Free-tier users are limited to **2 active tags**. Only `status='active'` counts toward the limit; paused/lost_confirmed tags do not. Enforcement is at `POST /tags`.
 - No phone_number or authentication token is ever logged in any format or log level.
 
 ## Persistent Rules
