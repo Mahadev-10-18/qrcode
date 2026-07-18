@@ -1,6 +1,12 @@
 """
 conftest.py — shared fixtures for all backend tests.
 """
+import os
+
+os.environ.setdefault("TWILIO_ACCOUNT_SID", "AC" + "0" * 32)
+os.environ.setdefault("TWILIO_AUTH_TOKEN", "0" * 32)
+os.environ.setdefault("TWILIO_PROXY_SERVICE_SID", "KS" + "0" * 32)
+
 from sqlalchemy import text
 from backend.models import User
 from backend.db import engine
@@ -9,11 +15,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from httpx import AsyncClient, ASGITransport
 import pytest_asyncio
 import uuid
-import os
-# Set default dummy environment variables for tests before any backend modules are imported
-os.environ.setdefault("TWILIO_ACCOUNT_SID", "AC" + "0" * 32)
-os.environ.setdefault("TWILIO_AUTH_TOKEN", "0" * 32)
-os.environ.setdefault("TWILIO_PROXY_SERVICE_SID", "KS" + "0" * 32)
 
 
 pytest_plugins = ["pytest_asyncio"]

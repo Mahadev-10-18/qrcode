@@ -39,6 +39,10 @@ async def test_login_rate_limiting_block_and_reset(client):
 @pytest.mark.asyncio
 async def test_signup_rate_limiting(client):
     import uuid
+    from sqlalchemy import text
+    async with AsyncSession(engine) as session:
+        await session.execute(text("DELETE FROM ratelimitevent"))
+        await session.commit()
     suffix = uuid.uuid4().hex[:6]
     # signup limit is 3 per hour
     for i in range(3):
@@ -49,10 +53,10 @@ async def test_signup_rate_limiting(client):
         assert response.status_code == status.HTTP_201_CREATED
 
     # 4th signup attempt must return 429
-        response = await client.post(
-            "/auth/signup",
-            json={"email": f"signup_{suffix}_4@example.com", "phone_number": "+15550000000"}
-        )
+    response = await client.post(
+        "/auth/signup",
+        json={"email": f"signup_{suffix}_4@example.com", "phone_number": "+15550000000"}
+    )
     assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert "Too many signup attempts" in response.json()["detail"]
 
