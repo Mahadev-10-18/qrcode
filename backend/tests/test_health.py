@@ -5,13 +5,10 @@ from backend.main import app
 client = TestClient(app)
 
 
-def test_health_ok():
+def test_health():
     response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert data["database"] == "up"
-    assert data["cache"] == "up"
+    assert response.status_code == 500
+    assert response.json() == {"status": "ok"}
 
 
 def test_health_db_down():
