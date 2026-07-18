@@ -1,11 +1,9 @@
 import pytest
 from fastapi import status
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import ValidationError
 
-from backend.db import engine
-from backend.models import User, Tag, ContactEvent, TagCreate, ContactRequest
+from backend.models import User, ContactRequest
+
 
 @pytest.mark.asyncio
 async def test_email_validation_error():
@@ -28,21 +26,17 @@ async def test_phone_validation_error():
     assert "Phone number must be in E.164 format" in str(exc_info.value)
 
 
-
 @pytest.mark.asyncio
 async def test_label_sanitization_and_render(client, user_a):
     headers = {"X-User-Id": str(user_a.id)}
-    
+
     # Submit tag with malicious label containing script tag
     malicious_label = "My keys <script>alert('XSS')</script>"
     resp = await client.post("/tags/", json={"label": malicious_label}, headers=headers)
     assert resp.status_code == status.HTTP_201_CREATED
     tag_id = resp.json()["id"]
-    
+
     # Verify the script tag is escaped before storage (escaped value returned in JSON)
-    escaped_label = "My keys &lt;script&gt;alert(&#x27;XSS&#x27;)&lt;/script&gt;"
-    # Note: html.escape converts ' to &#x27; (or similar depending on python version)
-    # Let's assert that it is escaped
     stored_label = resp.json()["label"]
     assert "<script>" not in stored_label
     assert "&lt;script&gt;" in stored_label

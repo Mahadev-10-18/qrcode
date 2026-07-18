@@ -7,6 +7,7 @@ from ..models import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
+
 @router.get("/{job_id}")
 async def get_job(job_id: uuid.UUID):
     async with AsyncSession(engine) as session:

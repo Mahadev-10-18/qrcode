@@ -5,17 +5,18 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from datetime import datetime, timedelta
 
 from backend.db import engine
-from backend.models import RateLimitEvent, User, Tag
+from backend.models import RateLimitEvent
+
 
 @pytest.mark.asyncio
 async def test_login_rate_limiting_block_and_reset(client):
     email = "login_test@example.com"
-    
+
     # 5 attempts should go through (either returning 401 because user not exists, but NOT 429)
     for _ in range(5):
         response = await client.post("/auth/login", json={"email": email})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED or response.status_code == 200
-        
+
     # The 6th attempt must fail with 429
     response = await client.post("/auth/login", json={"email": email})
     assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
@@ -41,20 +42,25 @@ async def test_signup_rate_limiting(client):
     suffix = uuid.uuid4().hex[:6]
     # signup limit is 3 per hour
     for i in range(3):
-        response = await client.post("/auth/signup", json={"email": f"signup_{suffix}_{i}@example.com", "phone_number": "+15550000000"})
+        response = await client.post(
+            "/auth/signup",
+            json={"email": f"signup_{suffix}_{i}@example.com", "phone_number": "+15550000000"}
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     # 4th signup attempt must return 429
-    response = await client.post("/auth/signup", json={"email": f"signup_{suffix}_4@example.com", "phone_number": "+15550000000"})
+        response = await client.post(
+            "/auth/signup",
+            json={"email": f"signup_{suffix}_4@example.com", "phone_number": "+15550000000"}
+        )
     assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert "Too many signup attempts" in response.json()["detail"]
-
 
 
 @pytest.mark.asyncio
 async def test_tag_creation_rate_limiting(client, user_a):
     headers = {"X-User-Id": str(user_a.id)}
-    
+
     # tag limit is 10 per hour
     for i in range(10):
         response = await client.post("/tags/", json={"label": f"tag_{i}"}, headers=headers)

@@ -5,6 +5,7 @@ from sqlmodel import select
 from .db import engine
 from .models import User
 
+
 async def get_current_user(x_user_id: str = Header(...)):
     """Very simple stub auth: expects an `X-User-Id` header containing a UUID.
     Returns the User object from the DB or raises 401.

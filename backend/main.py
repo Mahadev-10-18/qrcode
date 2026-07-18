@@ -1,19 +1,19 @@
-from fastapi import FastAPI, Response
-import uuid
-import logging
+from .db import init_db
+from .routers import tags_pdf
+from .routes import tags, public, auth, jobs
+from fastapi import FastAPI
 
 from .utils.logging_setup import setup_logging
 setup_logging()
 
 # Import routers from correct modules
-from .routes import tags, public, auth, jobs
-from .routers import tags_pdf
-from .db import init_db
 
 
 app = FastAPI()
 
 # Health endpoint
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -32,4 +32,3 @@ async def on_startup():
     from .utils.cache import cache
     await cache.connect()
     await init_db()
-

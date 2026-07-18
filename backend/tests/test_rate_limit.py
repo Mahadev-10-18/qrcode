@@ -5,7 +5,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.db import engine
-from backend.models import Tag, User, ContactEvent
+from backend.models import Tag, ContactEvent
+
 
 @pytest.mark.asyncio
 async def test_contact_rate_limiting(client, user_a):
@@ -20,23 +21,23 @@ async def test_contact_rate_limiting(client, user_a):
         session.add(tag)
         await session.commit()
         await session.refresh(tag)
-        
+
     tag_id = tag.id
-    
+
     with patch("backend.routes.public.Client") as MockClient:
         mock_instance = MockClient.return_value
         mock_proxy = mock_instance.proxy.v1.services.return_value
         mock_sessions = mock_proxy.sessions
         mock_session_obj = mock_sessions.create.return_value
         mock_session_obj.sid = "KC12345678901234567890123456789012"
-        
+
         # 5 requests should all succeed
         for i in range(5):
             response = await client.post(f"/t/{tag_id}/contact", json={
                 "method": "text",
                 "finder_phone": f"+1555000000{i}"
             })
-            assert response.status_code == 200, f"Request {i+1} failed"
+            assert response.status_code == 200, f"Request {i + 1} failed"
             assert response.json()["message"] == "Contact request recorded."
 
         # 6th request should fail with 429 Too Many Requests
@@ -52,7 +53,7 @@ async def test_contact_rate_limiting(client, user_a):
         result = await session.exec(
             select(ContactEvent)
             .where(ContactEvent.tag_id == tag_id)
-            .order_index_by(ContactEvent.created_at) if hasattr(ContactEvent, "order_index_by") 
+            .order_index_by(ContactEvent.created_at) if hasattr(ContactEvent, "order_index_by")
             else select(ContactEvent).where(ContactEvent.tag_id == tag_id).order_by(ContactEvent.created_at)
         )
         events = result.all()

@@ -1,6 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from fastapi.responses import StreamingResponse
-import os
 import io
 import qrcode
 from qrcode.constants import ERROR_CORRECT_H
@@ -14,6 +12,7 @@ from ..utils.rate_limit import get_client_ip, check_rate_limit
 from ..utils.cache import cache
 
 router = APIRouter(prefix="/tags", tags=["tags"])
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=Tag)
 async def create_tag(tag_in: TagCreate, request: Request, current_user=Depends(get_current_user)):
@@ -33,11 +32,13 @@ async def create_tag(tag_in: TagCreate, request: Request, current_user=Depends(g
         await session.refresh(tag)
         return tag
 
+
 @router.get("/", response_model=list[Tag])
 async def list_tags(current_user=Depends(get_current_user)):
     async with AsyncSession(engine) as session:
         result = await session.exec(select(Tag).where(Tag.owner_id == current_user.id))
         return result.all()
+
 
 @router.patch("/{tag_id}", response_model=Tag)
 async def update_tag(
@@ -52,11 +53,11 @@ async def update_tag(
         tag = result.one_or_none()
         if not tag or tag.owner_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
-            
+
         # Invalidate cache if status or label changes
         if tag_in.label is not None or tag_in.status is not None:
             await cache.delete(f"qr:{tag_id}")
-            
+
         if tag_in.label is not None:
             tag.label = tag_in.label
         if tag_in.status is not None:
@@ -66,6 +67,7 @@ async def update_tag(
         await session.refresh(tag)
         return tag
 
+
 @router.get("/{tag_id}/qr")
 async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
     async with AsyncSession(engine) as session:
@@ -73,12 +75,12 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
         tag = result.one_or_none()
         if not tag or tag.owner_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
-            
+
         cache_key = f"qr:{tag_id}"
         cached_data = await cache.get(cache_key)
         if cached_data:
             return Response(content=cached_data, media_type="image/png", headers={"X-Cache": "HIT"})
-            
+
         from ..config import settings
         domain = settings.app_domain
 
@@ -90,6 +92,6 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         qr_bytes = buf.getvalue()
-        
+
         await cache.set(cache_key, qr_bytes)
         return Response(content=qr_bytes, media_type="image/png", headers={"X-Cache": "MISS"})

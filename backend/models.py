@@ -6,6 +6,7 @@ from pydantic import EmailStr, field_validator
 import re
 import html
 
+
 class User(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
     email: EmailStr = Field(index=True, nullable=False, unique=True)
@@ -23,10 +24,12 @@ class User(SQLModel, table=True):
             return cleaned
         return v
 
+
 class TagStatus(str):
     ACTIVE = "active"
     PAUSED = "paused"
     LOST_CONFIRMED = "lost_confirmed"
+
 
 class Tag(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
@@ -46,6 +49,8 @@ class Tag(SQLModel, table=True):
         return v
 
 # New model for contact events (used by public POST /t/{id}/contact endpoint)
+
+
 class TagCreate(SQLModel):
     label: str
 
@@ -57,6 +62,7 @@ class TagCreate(SQLModel):
                 raise ValueError("Label must be 100 characters or less")
             return html.escape(v)
         return v
+
 
 class TagUpdate(SQLModel):
     label: Optional[str] = None
@@ -70,6 +76,7 @@ class TagUpdate(SQLModel):
                 raise ValueError("Label must be 100 characters or less")
             return html.escape(v)
         return v
+
 
 class ContactRequest(SQLModel):
     method: str = "text"
@@ -94,7 +101,6 @@ class ContactEvent(SQLModel, table=True):
     is_failed: bool = Field(default=False)
 
 
-
 class RateLimitEvent(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
     key: str = Field(index=True, nullable=False)
@@ -115,5 +121,3 @@ class Job(SQLModel, table=True):
     status: str = Field(default="pending")  # "pending", "processing", "completed", "failed"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     result: Optional[bytes] = Field(default=None, nullable=True)
-
-

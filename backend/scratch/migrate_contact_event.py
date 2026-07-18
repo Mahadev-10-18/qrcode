@@ -1,3 +1,5 @@
+from sqlalchemy import text
+from backend.db import engine
 import sys
 import os
 import asyncio
@@ -8,8 +10,7 @@ os.environ.setdefault("TWILIO_AUTH_TOKEN", "0" * 32)
 os.environ.setdefault("TWILIO_PROXY_SERVICE_SID", "KS" + "0" * 32)
 
 sys.path.append(r"d:\qrcode")
-from backend.db import engine
-from sqlalchemy import text
+
 
 async def main():
     async with engine.begin() as conn:

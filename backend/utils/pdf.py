@@ -1,8 +1,7 @@
-import os
-from fastapi import HTTPException, status
 import qrcode
 import base64
 from io import BytesIO
+
 
 def tag_to_html(tag) -> str:
     """Return HTML snippet for a single tag with QR image and label."""
@@ -26,6 +25,7 @@ def tag_to_html(tag) -> str:
         <div class='label'>{tag.label}</div>
     </div>
     """
+
 
 def render_grid_html(tags, per_page: int = 6) -> str:
     """Render a full HTML document containing a grid of tags.
@@ -63,6 +63,7 @@ def render_grid_html(tags, per_page: int = 6) -> str:
     </body></html>
     """
     return html
+
 
 def html_to_pdf(html: str) -> bytes:
     from xhtml2pdf import pisa

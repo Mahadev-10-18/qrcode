@@ -1,4 +1,3 @@
-import os
 import pytest
 from fastapi import status
 
@@ -8,7 +7,6 @@ async def test_qr_generation_and_decode(client, user_a, user_b):
     from backend.config import settings
     old_domain = settings.app_domain
     settings.app_domain = "http://mydomain.com"
-
 
     try:
         headers_a = {"X-User-Id": str(user_a.id)}
@@ -40,4 +38,3 @@ async def test_qr_generation_and_decode(client, user_a, user_b):
         assert qr_resp_b.status_code == status.HTTP_404_NOT_FOUND
     finally:
         settings.app_domain = old_domain
-

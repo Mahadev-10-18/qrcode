@@ -37,7 +37,6 @@ async def test_pdf_sheet_one_page_for_three_tags(client, user_a):
     assert page_count == 1, f"Expected 1 page, got {page_count}"
 
 
-
 @pytest.mark.asyncio
 async def test_owner_isolation_pdf_sheet(client, user_a, user_b):
     """User B cannot include User A's tag in a sheet — must get 404."""

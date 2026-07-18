@@ -1,6 +1,4 @@
-import os
 from pathlib import Path
-import urllib.parse
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
@@ -29,7 +27,6 @@ else:
         connect_args={"ssl": False},
         poolclass=NullPool,
     )
-
 
 
 async def init_db() -> None:

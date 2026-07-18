@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 import urllib.parse
 
+
 class Settings(BaseSettings):
     postgres_user: str = Field(default="postgres", validation_alias="POSTGRES_USER")
     postgres_password: str = Field(default="postgres", validation_alias="POSTGRES_PASSWORD")
@@ -19,7 +20,6 @@ class Settings(BaseSettings):
     domain: str = Field(default="example.com", validation_alias="DOMAIN")
     redis_url: str = Field(default="memory", validation_alias="REDIS_URL")
 
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -33,5 +33,6 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{encoded_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
 
 settings = Settings()
