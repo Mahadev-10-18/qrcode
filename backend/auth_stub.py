@@ -62,11 +62,6 @@ async def get_current_user(
             user_uuid = uuid.UUID(user_id)
         except (JWTError, ValueError):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
-    elif settings.allow_legacy_auth and x_user_id:
-        try:
-            user_uuid = uuid.UUID(x_user_id)
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user header")
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
 

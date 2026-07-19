@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=60, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_minutes: int = Field(default=60 * 24 * 7, validation_alias="REFRESH_TOKEN_EXPIRE_MINUTES")
     enable_db_autocreate: bool = Field(default=False, validation_alias="ENABLE_DB_AUTO_CREATE")
-    allow_legacy_auth: bool = Field(default=False, validation_alias="ALLOW_LEGACY_AUTH")
     verification_token_expire_hours: int = Field(default=48, validation_alias="VERIFICATION_TOKEN_EXPIRE_HOURS")
     reset_token_expire_minutes: int = Field(default=60, validation_alias="RESET_TOKEN_EXPIRE_MINUTES")
     email_from: str = Field(default="noreply@tagmasterpro.com", validation_alias="EMAIL_FROM")
@@ -76,9 +75,6 @@ class Settings(BaseSettings):
 
         if self.enable_db_autocreate:
             raise ValueError("ENABLE_DB_AUTO_CREATE must be False in production. Use Alembic migrations instead.")
-
-        if self.allow_legacy_auth:
-            raise ValueError("ALLOW_LEGACY_AUTH must be False in production.")
 
         return self
 

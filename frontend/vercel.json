@@ -1,4 +1,15 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; connect-src 'self' https: http://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; frame-ancestors 'none';"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/((?!assets/.*|favicon\\.ico|robots\\.txt|manifest\\.json|.*\\.(?:js|css|png|svg|webp|woff2?|json)$).*)", "destination": "/index.html" }
   ]

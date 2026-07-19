@@ -12,7 +12,7 @@ from .routers import tags_pdf
 from .db import ensure_db_initialized
 from .utils.logging_setup import setup_logging
 from .utils.sentry import init_sentry
-from .utils.security import SecurityHeadersMiddleware, RequestSizeLimitMiddleware, TimeoutMiddleware
+from .utils.security import SecurityHeadersMiddleware, RequestSizeLimitMiddleware, TimeoutMiddleware, CSRFMiddleware
 from .config import settings
 
 setup_logging()
@@ -39,9 +39,11 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     max_age=600,
 )
+
+app.add_middleware(CSRFMiddleware)
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware, max_size=100_000)

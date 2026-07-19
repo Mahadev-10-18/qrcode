@@ -44,7 +44,23 @@ async def signup(request: Request, signup_data: SignupData):
         result = await session.exec(select(User).where(User.email == signup_data.email))
         existing_user = result.one_or_none()
         if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            await log_audit(
+                action="user.signup_duplicate",
+                user_id=str(existing_user.id),
+                resource_type="user",
+                resource_id=str(existing_user.id),
+                ip_address=ip,
+            )
+            login_url = f"{settings.frontend_url.rstrip('/')}/login"
+            await send_email(
+                to=existing_user.email,
+                subject="Duplicate Registration Attempt",
+                html_body=f"<p>Someone tried to register an account with this email address, but you already have one.</p><p><a href='{login_url}'>Click here to login</a></p>",
+            )
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED,
+                content={"detail": "Account created. Please check your email to verify your account before logging in."},
+            )
 
         verification_token = secrets.token_urlsafe(32)
         new_user = User(
@@ -72,35 +88,10 @@ async def signup(request: Request, signup_data: SignupData):
             ip_address=ip,
         )
 
-        access_token = create_access_token({"sub": str(new_user.id)})
-        refresh_token = create_refresh_token({"sub": str(new_user.id)})
-        response = JSONResponse(
+        return JSONResponse(
             status_code=status.HTTP_201_CREATED,
-            content={
-                "access_token": access_token,
-                "token_type": "bearer",
-                "user": {"id": str(new_user.id), "email": new_user.email, "plan": new_user.plan},
-            },
+            content={"detail": "Account created. Please check your email to verify your account before logging in."},
         )
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=settings.is_production,
-            samesite="none" if settings.is_production else "lax",
-            max_age=settings.refresh_token_expire_minutes * 60,
-            path="/",
-        )
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=settings.is_production,
-            samesite="none" if settings.is_production else "lax",
-            max_age=settings.access_token_expire_minutes * 60,
-            path="/",
-        )
-        return response
 
 
 @router.post("/login")

@@ -42,7 +42,7 @@ export default function AuthLanding() {
       try {
         const response = await fetch(`${API_BASE}/auth/forgot-password`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ email }),
         });
         const data = await response.json();
@@ -68,7 +68,7 @@ export default function AuthLanding() {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'include',
         body: JSON.stringify(body),
       });
@@ -79,8 +79,14 @@ export default function AuthLanding() {
         throw new Error(data.detail || `${isLogin ? 'Login' : 'Signup'} failed`);
       }
 
-      setUser(data.user);
-      navigate('/dashboard');
+      if (!isLogin) {
+        setSuccessMessage(data.detail || 'Account created. Please verify your email.');
+        setActiveTab('login');
+        setPassword('');
+      } else {
+        setUser(data.user);
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.message);
     } finally {

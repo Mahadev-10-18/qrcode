@@ -74,3 +74,17 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
         elapsed = time.time() - start
         response.headers["X-Processing-Time-Ms"] = str(int(elapsed * 1000))
         return response
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """Require X-Requested-With header on mutating requests to prevent CSRF."""
+    
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            if request.headers.get("x-requested-with") != "XMLHttpRequest":
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "CSRF verification failed. Missing X-Requested-With header."}
+                )
+        return await call_next(request)

@@ -3,6 +3,7 @@ export const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, 
 export async function authFetch(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
     ...(options.headers || {}),
   };
 

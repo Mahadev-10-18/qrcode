@@ -10,7 +10,7 @@ import uuid
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import asyncio
 import logging
 
@@ -18,16 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class SheetRequest(BaseModel):
-    tag_ids: List[str]
+    tag_ids: List[str] = Field(..., min_length=1, max_length=50)
     layout: int = 6
-
-    @classmethod
-    def validate_tag_ids(cls, v: List[str]) -> List[str]:
-        if len(v) > 50:
-            raise ValueError("Maximum 50 tags per sheet")
-        if len(v) < 1:
-            raise ValueError("At least 1 tag required")
-        return v
 
 
 router = APIRouter(prefix="/tags", tags=["tags-pdf"])
