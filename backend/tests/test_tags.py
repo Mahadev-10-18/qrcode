@@ -4,8 +4,8 @@ from fastapi import status
 
 
 @pytest.mark.asyncio
-async def test_tag_uuid_randomness(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_tag_uuid_randomness(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
     r1 = await client.post("/tags/", json={"label": "first"}, headers=headers)
     r2 = await client.post("/tags/", json={"label": "second"}, headers=headers)
     assert r1.status_code == status.HTTP_201_CREATED
@@ -18,17 +18,19 @@ async def test_tag_uuid_randomness(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_user_isolation(client, user_a, user_b):
-    headers_a = {"X-User-Id": str(user_a.id)}
+async def test_user_isolation(client, user_a, user_b, auth_headers):
+    headers_a = auth_headers(user_a)
     resp = await client.post("/tags/", json={"label": "A tag"}, headers=headers_a)
     assert resp.status_code == status.HTTP_201_CREATED
     tag_id = resp.json()["id"]
 
     # user B lists tags – should be empty
-    headers_b = {"X-User-Id": str(user_b.id)}
+    headers_b = auth_headers(user_b)
     list_resp = await client.get("/tags/", headers=headers_b)
     assert list_resp.status_code == status.HTTP_200_OK
-    assert list_resp.json() == []
+    data = list_resp.json()
+    assert data["items"] == []
+    assert data["total"] == 0
 
     # user B patches A's tag – 404 (existence must not be leaked)
     patch_resp = await client.patch(
@@ -38,12 +40,12 @@ async def test_user_isolation(client, user_a, user_b):
 
 
 @pytest.mark.asyncio
-async def test_invalid_status_422(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_invalid_status_422(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
     resp = await client.post("/tags/", json={"label": "valid"}, headers=headers)
     assert resp.status_code == status.HTTP_201_CREATED
     tag_id = resp.json()["id"]
     patch_resp = await client.patch(
         f"/tags/{tag_id}", json={"status": "not_valid"}, headers=headers
     )
-    assert patch_resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert patch_resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

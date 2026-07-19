@@ -27,8 +27,8 @@ async def test_phone_validation_error():
 
 
 @pytest.mark.asyncio
-async def test_label_sanitization_and_render(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_label_sanitization_and_render(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
 
     # Submit tag with malicious label containing script tag
     malicious_label = "My keys <script>alert('XSS')</script>"

@@ -5,11 +5,12 @@ from qrcode.constants import ERROR_CORRECT_H
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from uuid import UUID
-from ..models import Tag, TagStatus, TagCreate, TagUpdate
+from ..models import Tag, TagStatus, TagCreate, TagUpdate, ContactEvent
 from ..auth_stub import get_current_user
 from ..db import engine
 from ..utils.rate_limit import get_client_ip, check_rate_limit
 from ..utils.cache import cache
+from ..utils.audit import log_audit
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -48,22 +49,55 @@ async def create_tag(tag_in: TagCreate, request: Request, response: Response, cu
         await session.commit()
         await session.refresh(tag)
         response.headers["X-Tag-Usage-Warning"] = "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."
+
+        await log_audit(
+            action="tag.create",
+            user_id=str(current_user.id),
+            resource_type="tag",
+            resource_id=str(tag.id),
+            detail=f"Label: {tag.label}",
+            ip_address=ip,
+        )
         return tag
 
 
-@router.get("/", response_model=list[Tag])
-async def list_tags(current_user=Depends(get_current_user)):
+@router.get("/")
+async def list_tags(
+    request: Request,
+    current_user=Depends(get_current_user),
+    page: int = 1,
+    per_page: int = 50,
+):
+    await check_rate_limit(
+        key=f"user:{current_user.id}:list_tags",
+        limit=60,
+        window_minutes=60,
+        error_msg="Too many requests. Try again later."
+    )
     async with AsyncSession(engine) as session:
-        result = await session.exec(select(Tag).where(Tag.owner_id == current_user.id))
-        return result.all()
+        stmt = select(Tag).where(Tag.owner_id == current_user.id).order_by(Tag.created_at.desc())
+        total_stmt = select(Tag).where(Tag.owner_id == current_user.id)
+        total_result = await session.exec(total_stmt)
+        total = len(total_result.all())
+        offset = (page - 1) * per_page
+        result = await session.exec(stmt.offset(offset).limit(per_page))
+        items = result.all()
+        return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
 @router.patch("/{tag_id}", response_model=Tag)
 async def update_tag(
     tag_id: UUID,
     tag_in: TagUpdate,
+    request: Request,
     current_user=Depends(get_current_user),
 ):
+    await check_rate_limit(
+        key=f"user:{current_user.id}:update_tag",
+        limit=30,
+        window_minutes=60,
+        error_msg="Too many tag updates. Try again later."
+    )
     if tag_in.status and tag_in.status not in {TagStatus.ACTIVE, TagStatus.PAUSED, TagStatus.LOST_CONFIRMED}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid status")
     async with AsyncSession(engine) as session:
@@ -83,11 +117,26 @@ async def update_tag(
         session.add(tag)
         await session.commit()
         await session.refresh(tag)
+
+        await log_audit(
+            action="tag.update",
+            user_id=str(current_user.id),
+            resource_type="tag",
+            resource_id=str(tag_id),
+            detail=f"status={tag_in.status}, label={tag_in.label}",
+            ip_address=get_client_ip(request),
+        )
         return tag
 
 
 @router.get("/{tag_id}/qr")
-async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
+async def get_tag_qr(tag_id: UUID, request: Request, current_user=Depends(get_current_user)):
+    await check_rate_limit(
+        key=f"user:{current_user.id}:qr_view",
+        limit=60,
+        window_minutes=60,
+        error_msg="Too many QR view requests. Try again later."
+    )
     async with AsyncSession(engine) as session:
         result = await session.exec(select(Tag).where(Tag.id == tag_id))
         tag = result.one_or_none()
@@ -107,9 +156,7 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
             )
 
         from ..config import settings
-        domain = settings.app_domain
-
-        url = f"{domain}/t/{tag.id}"
+        url = f"{settings.effective_qr_url}/t/{tag.id}"
         qr = qrcode.QRCode(error_correction=ERROR_CORRECT_H)
         qr.add_data(url)
         qr.make(fit=True)
@@ -127,3 +174,42 @@ async def get_tag_qr(tag_id: UUID, current_user=Depends(get_current_user)):
                 "X-Tag-Usage-Warning": "This code represents ONE item - create a separate tag per physical item, don't reuse this code elsewhere."
             }
         )
+
+
+@router.get("/messages")
+async def get_owner_messages(request: Request, current_user=Depends(get_current_user)):
+    await check_rate_limit(
+        key=f"user:{current_user.id}:messages",
+        limit=30,
+        window_minutes=60,
+        error_msg="Too many requests. Try again later."
+    )
+    async with AsyncSession(engine) as session:
+        result = await session.exec(select(Tag).where(Tag.owner_id == current_user.id))
+        tags = result.all()
+        tag_ids = [t.id for t in tags]
+
+        if not tag_ids:
+            return {"messages": []}
+
+        contact_result = await session.exec(
+            select(ContactEvent)
+            .where(ContactEvent.tag_id.in_(tag_ids))
+            .where(ContactEvent.is_blocked == False)
+            .order_by(ContactEvent.created_at.desc())
+        )
+        events = contact_result.all()
+
+        tag_map = {t.id: t.label for t in tags}
+        messages = []
+        for e in events:
+            messages.append({
+                "id": str(e.id),
+                "tag_id": str(e.tag_id),
+                "tag_label": tag_map.get(e.tag_id, "Unknown"),
+                "finder_phone": e.finder_phone,
+                "message": e.message or "",
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            })
+
+        return {"messages": messages}

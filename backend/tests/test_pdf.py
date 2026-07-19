@@ -4,9 +4,9 @@ from io import BytesIO
 
 
 @pytest.mark.asyncio
-async def test_pdf_sheet_one_page_for_three_tags(client, paid_user):
+async def test_pdf_sheet_one_page_for_three_tags(client, paid_user, auth_headers):
     """3 tags on a 6-per-page layout should produce exactly 1 PDF page."""
-    headers = {"X-User-Id": str(paid_user.id)}
+    headers = auth_headers(paid_user)
     tag_ids = []
     for label in ["One", "Two", "Three"]:
         resp = await client.post("/tags/", json={"label": label}, headers=headers)
@@ -38,10 +38,10 @@ async def test_pdf_sheet_one_page_for_three_tags(client, paid_user):
 
 
 @pytest.mark.asyncio
-async def test_owner_isolation_pdf_sheet(client, user_a, user_b):
+async def test_owner_isolation_pdf_sheet(client, user_a, user_b, auth_headers):
     """User B cannot include User A's tag in a sheet — must get 404."""
-    headers_a = {"X-User-Id": str(user_a.id)}
-    headers_b = {"X-User-Id": str(user_b.id)}
+    headers_a = auth_headers(user_a)
+    headers_b = auth_headers(user_b)
 
     resp = await client.post("/tags/", json={"label": "A Tag"}, headers=headers_a)
     assert resp.status_code == status.HTTP_201_CREATED

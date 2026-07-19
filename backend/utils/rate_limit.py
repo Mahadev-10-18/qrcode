@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..db import engine
 from ..models import RateLimitEvent
+from ..utils.cache import cache
 
 
 def get_client_ip(request: Request) -> str:
@@ -21,6 +22,32 @@ def get_client_ip(request: Request) -> str:
 
 
 async def check_rate_limit(key: str, limit: int, window_minutes: int, error_msg: str = "Rate limit exceeded.") -> None:
+    # Use Redis for rate limiting when available (horizontally scalable)
+    if cache.redis_client:
+        await _check_rate_limit_redis(key, limit, window_minutes, error_msg)
+    else:
+        await _check_rate_limit_db(key, limit, window_minutes, error_msg)
+
+
+async def _check_rate_limit_redis(key: str, limit: int, window_minutes: int, error_msg: str) -> None:
+    redis = cache.redis_client
+    window_seconds = window_minutes * 60
+    now = int(_utcnow().timestamp())
+    window_key = f"rl:{key}:{now // window_seconds}"
+
+    pipe = redis.pipeline()
+    pipe.incr(window_key)
+    pipe.expire(window_key, window_seconds + 60)
+    count, _ = await pipe.execute()
+
+    if count > limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=error_msg
+        )
+
+
+async def _check_rate_limit_db(key: str, limit: int, window_minutes: int, error_msg: str) -> None:
     async with AsyncSession(engine) as session:
         cutoff = _utcnow() - timedelta(minutes=window_minutes)
         stmt = select(func.count(RateLimitEvent.id)).where(
@@ -30,7 +57,6 @@ async def check_rate_limit(key: str, limit: int, window_minutes: int, error_msg:
         res = await session.exec(stmt)
         count = res.one()
 
-        # Log this attempt
         event = RateLimitEvent(key=key)
         session.add(event)
         await session.commit()

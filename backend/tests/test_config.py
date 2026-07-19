@@ -2,14 +2,15 @@ import pytest
 import os
 import sys
 import importlib
-from pydantic import ValidationError
 
 
-def test_config_fails_loudly_when_unset():
-    # Keep track of current env
+def test_production_config_rejects_insecure_defaults():
     old_env = os.environ.copy()
 
-    # Temporarily rename any potential .env files
+    old_app_env = os.environ.get("APP_ENV", "")
+    os.environ["APP_ENV"] = "production"
+    os.environ["SECRET_KEY"] = "changeme"
+
     env_files = [".env", "backend/.env"]
     renamed_files = []
     for f in env_files:
@@ -17,36 +18,23 @@ def test_config_fails_loudly_when_unset():
             os.rename(f, f + ".bak")
             renamed_files.append(f)
 
-    # Temporarily remove required environment variables
-    required_keys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PROXY_SERVICE_SID"]
-    for key in required_keys:
-        if key in os.environ:
-            del os.environ[key]
-
-    # Unload the config module if it was already imported, so it re-evaluates
     if "backend.config" in sys.modules:
         del sys.modules["backend.config"]
 
     try:
-        # Expect ValidationError on startup if Twilio settings are missing
-        with pytest.raises(ValidationError) as exc_info:
+        with pytest.raises(ValueError):
             importlib.import_module("backend.config")
-
-        # Verify it lists the missing keys in the validation error
-        err_msg = str(exc_info.value)
-        assert "TWILIO_ACCOUNT_SID" in err_msg or "twilio_account_sid" in err_msg
     finally:
-        # Restore any renamed .env files
         for f in renamed_files:
             if os.path.exists(f + ".bak"):
                 os.rename(f + ".bak", f)
 
-        # Restore environment
         os.environ.clear()
         os.environ.update(old_env)
+        # Restore APP_ENV
+        if old_app_env:
+            os.environ["APP_ENV"] = old_app_env
 
-        # Reload configuration with restored environment
         if "backend.config" in sys.modules:
             del sys.modules["backend.config"]
         importlib.import_module("backend.config")
-

@@ -1,6 +1,4 @@
 import pytest
-import os
-from unittest.mock import patch
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -10,12 +8,6 @@ from backend.models import Tag, ContactEvent
 
 @pytest.mark.asyncio
 async def test_contact_rate_limiting(client, user_a):
-    # Setup test credentials in environment
-    os.environ["TWILIO_ACCOUNT_SID"] = "AC" + "0" * 32
-    os.environ["TWILIO_AUTH_TOKEN"] = "0" * 32
-    os.environ["TWILIO_PROXY_SERVICE_SID"] = "KS" + "0" * 32
-
-    # Create a tag for user_a
     async with AsyncSession(engine) as session:
         tag = Tag(owner_id=user_a.id, label="Rate Limited Item")
         session.add(tag)
@@ -24,31 +16,19 @@ async def test_contact_rate_limiting(client, user_a):
 
     tag_id = tag.id
 
-    with patch("backend.routes.public.Client") as MockClient:
-        mock_instance = MockClient.return_value
-        mock_proxy = mock_instance.proxy.v1.services.return_value
-        mock_sessions = mock_proxy.sessions
-        mock_session_obj = mock_sessions.create.return_value
-        mock_session_obj.sid = "KC12345678901234567890123456789012"
-
-        # 5 requests should all succeed
-        for i in range(5):
-            response = await client.post(f"/t/{tag_id}/contact", json={
-                "method": "text",
-                "finder_phone": f"+1555000000{i}"
-            })
-            assert response.status_code == 200, f"Request {i + 1} failed"
-            assert response.json()["message"] == "Contact request recorded."
-
-        # 6th request should fail with 429 Too Many Requests
+    for i in range(5):
         response = await client.post(f"/t/{tag_id}/contact", json={
-            "method": "text",
-            "finder_phone": "+15550000005"
+            "finder_phone": f"+1555000000{i}"
         })
-        assert response.status_code == 429
-        assert "Rate limit exceeded" in response.json()["detail"]
+        assert response.status_code == 200, f"Request {i + 1} failed"
+        assert response.json()["message"] == "Message sent!"
 
-    # Verify DB logs
+    response = await client.post(f"/t/{tag_id}/contact", json={
+        "finder_phone": "+15550000005"
+    })
+    assert response.status_code == 429
+    assert "Rate limit exceeded" in response.json()["detail"]
+
     async with AsyncSession(engine) as session:
         result = await session.exec(
             select(ContactEvent)

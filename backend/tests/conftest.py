@@ -3,18 +3,31 @@ conftest.py — shared fixtures for all backend tests.
 """
 import os
 
+os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("TWILIO_ACCOUNT_SID", "AC" + "0" * 32)
 os.environ.setdefault("TWILIO_AUTH_TOKEN", "0" * 32)
 os.environ.setdefault("TWILIO_PROXY_SERVICE_SID", "KS" + "0" * 32)
+os.environ.setdefault("ENABLE_DB_AUTO_CREATE", "True")
+os.environ["SMTP_HOST"] = ""
 
-from sqlalchemy import text
-from backend.models import User
-from backend.db import engine
+from sqlalchemy import delete
+from backend.models import User, RateLimitEvent
+from backend.db import engine, ensure_db_initialized
 from backend.main import app
+from backend.auth_stub import create_access_token
 from sqlmodel.ext.asyncio.session import AsyncSession
 from httpx import AsyncClient, ASGITransport
 import pytest_asyncio
+import pytest
 import uuid
+
+
+@pytest.fixture
+def auth_headers():
+    def _auth_headers(user: User) -> dict[str, str]:
+        return {"Authorization": f"Bearer {create_access_token({'sub': str(user.id)})}"}
+
+    return _auth_headers
 
 
 pytest_plugins = ["pytest_asyncio"]
@@ -53,8 +66,14 @@ async def paid_user():
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def clear_rate_limits():
+async def init_database():
+    os.environ.setdefault("APP_ENV", "test")
+    await ensure_db_initialized()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clear_rate_limits(init_database):
     async with AsyncSession(engine) as session:
-        await session.execute(text("DELETE FROM ratelimitevent"))
+        await session.exec(delete(RateLimitEvent))
         await session.commit()
 

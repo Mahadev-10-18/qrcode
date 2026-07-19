@@ -3,9 +3,9 @@ from fastapi import status
 
 
 @pytest.mark.asyncio
-async def test_free_user_limited_to_2_active_tags(client, user_a):
+async def test_free_user_limited_to_2_active_tags(client, user_a, auth_headers):
     """Free user can create 2 tags, 3rd is rejected with 403."""
-    headers = {"X-User-Id": str(user_a.id)}
+    headers = auth_headers(user_a)
 
     # Tag 1 — should succeed
     r1 = await client.post("/tags/", json={"label": "Keys"}, headers=headers)
@@ -23,9 +23,9 @@ async def test_free_user_limited_to_2_active_tags(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_free_user_pause_frees_slot(client, user_a):
+async def test_free_user_pause_frees_slot(client, user_a, auth_headers):
     """Free user pauses one of 2 tags, can then create a new one."""
-    headers = {"X-User-Id": str(user_a.id)}
+    headers = auth_headers(user_a)
 
     # Create 2 tags
     r1 = await client.post("/tags/", json={"label": "Keys"}, headers=headers)
@@ -51,9 +51,9 @@ async def test_free_user_pause_frees_slot(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_paid_user_unlimited_tags(client, paid_user):
+async def test_paid_user_unlimited_tags(client, paid_user, auth_headers):
     """Paid user can create more than 2 tags without hitting the limit."""
-    headers = {"X-User-Id": str(paid_user.id)}
+    headers = auth_headers(paid_user)
 
     for i in range(5):
         resp = await client.post(

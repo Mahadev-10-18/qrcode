@@ -5,4 +5,10 @@ node_modules/
 /dist/
 /.venv/
 .pytest_cache/
+*.db
+tmp_*
+_e2e_*
+backend/deps/
+backend/scratch/
+
 

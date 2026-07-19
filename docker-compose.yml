@@ -1,14 +1,37 @@
+x-env: &env
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: lostitem
+  REDIS_URL: redis://redis:6379
+  APP_DOMAIN: ${APP_DOMAIN:-http://localhost}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+  DOMAIN: ${DOMAIN:-localhost}
+  APP_ENV: ${APP_ENV:-production}
+  SECRET_KEY: ${SECRET_KEY}
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+  TWILIO_PROXY_SERVICE_SID: ${TWILIO_PROXY_SERVICE_SID}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  EMAIL_FROM: ${EMAIL_FROM:-noreply@tagmasterpro.com}
+
 services:
   postgres:
-    image: postgres:13
+    image: postgres:15-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: lostitem
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/backup:/backup
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -20,7 +43,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -35,19 +58,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: lostitem
-      REDIS_URL: redis://redis:6379
-      APP_DOMAIN: http://localhost:8000
-      DOMAIN: localhost:8000
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
-      TWILIO_PROXY_SERVICE_SID: ${TWILIO_PROXY_SERVICE_SID}
-    ports:
-      - "8000:8000"
+      <<: *env
+    expose:
+      - "8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,13 +78,52 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_started
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Backup runs daily at 3am — writes to ./backups/
+  backup:
+    image: postgres:15-alpine
+    profiles:
+      - backup
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - ./backups:/backups
+    entrypoint: |
+      sh -c '
+        echo "0 3 * * * pg_dump -h postgres -U postgres -d lostitem -F c -f /backups/lostitem_$$(date +%Y%m%d_%H%M%S).dump" > /etc/crontabs/root
+        crond -f
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  caddy_data:
+  caddy_config:

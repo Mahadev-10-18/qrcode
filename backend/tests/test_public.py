@@ -9,8 +9,8 @@ from backend.models import Tag, TagStatus
 
 
 @pytest.mark.asyncio
-async def test_public_tag_view_no_pii(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_public_tag_view_no_pii(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
     resp = await client.post("/tags/", json={"label": "MyItem"}, headers=headers)
     assert resp.status_code == status.HTTP_201_CREATED
     tag_id = resp.json()["id"]
@@ -29,8 +29,8 @@ async def test_public_tag_view_no_pii(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_public_tag_404_for_paused(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_public_tag_404_for_paused(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
     resp = await client.post("/tags/", json={"label": "PausedItem"}, headers=headers)
     assert resp.status_code == status.HTTP_201_CREATED
     tag_id = resp.json()["id"]

@@ -18,11 +18,11 @@ async def test_login_rate_limiting_block_and_reset(client):
 
     # 5 attempts should go through (either returning 401 because user not exists, but NOT 429)
     for _ in range(5):
-        response = await client.post("/auth/login", json={"email": email})
+        response = await client.post("/auth/login", json={"email": email, "password": "password123"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED or response.status_code == 200
 
     # The 6th attempt must fail with 429
-    response = await client.post("/auth/login", json={"email": email})
+    response = await client.post("/auth/login", json={"email": email, "password": "password123"})
     assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert "Too many login attempts" in response.json()["detail"]
 
@@ -43,31 +43,39 @@ async def test_login_rate_limiting_block_and_reset(client):
 @pytest.mark.asyncio
 async def test_signup_rate_limiting(client):
     import uuid
-    from sqlalchemy import text
+    from sqlalchemy import delete
     async with AsyncSession(engine) as session:
-        await session.execute(text("DELETE FROM ratelimitevent"))
+        await session.exec(delete(RateLimitEvent))
         await session.commit()
     suffix = uuid.uuid4().hex[:6]
     # signup limit is 3 per hour
     for i in range(3):
         response = await client.post(
             "/auth/signup",
-            json={"email": f"signup_{suffix}_{i}@example.com", "phone_number": "+15550000000"}
+            json={
+                "email": f"signup_{suffix}_{i}@example.com",
+                "phone_number": "+15550000000",
+                "password": "password123"
+            }
         )
         assert response.status_code == status.HTTP_201_CREATED
 
     # 4th signup attempt must return 429
     response = await client.post(
         "/auth/signup",
-        json={"email": f"signup_{suffix}_4@example.com", "phone_number": "+15550000000"}
+        json={
+            "email": f"signup_{suffix}_4@example.com",
+            "phone_number": "+15550000000",
+            "password": "password123"
+        }
     )
     assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert "Too many signup attempts" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
-async def test_tag_creation_rate_limiting(client, paid_user):
-    headers = {"X-User-Id": str(paid_user.id)}
+async def test_tag_creation_rate_limiting(client, paid_user, auth_headers):
+    headers = auth_headers(paid_user)
 
     # tag limit is 10 per hour
     for i in range(10):

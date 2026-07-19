@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authFetch, API_BASE } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 import {
   QrCode,
   Plus,
@@ -11,67 +13,76 @@ import {
   Loader2,
   AlertTriangle,
   ExternalLink,
-  X
+  X,
+  LayoutDashboard,
+  MessageSquare
 } from 'lucide-react';
 
 export default function Dashboard() {
+  const { user, setUser, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState(null);
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // Tag creation state
   const [newLabel, setNewLabel] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Selected tags for sheet printing
   const [selectedTags, setSelectedTags] = useState([]);
   const [layout, setLayout] = useState(6);
-  const [jobStatus, setJobStatus] = useState(null); // 'pending' | 'processing' | 'completed' | 'failed' | null
+  const [jobStatus, setJobStatus] = useState(null);
 
-  // Active QR preview modal state
   const [previewTag, setPreviewTag] = useState(null);
+  const [qrPreviewUrl, setQrPreviewUrl] = useState(null);
+
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  const pollIntervalRef = useRef(null);
 
   const navigate = useNavigate();
-  const userId = localStorage.getItem('x_user_id');
-
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('x_user_id');
-    localStorage.removeItem('user_email');
-    navigate('/login');
-  }, [navigate]);
 
   useEffect(() => {
-    if (!userId) {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await authFetch('/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore
+    }
+    setUser(null);
+    navigate('/login');
+  }, [setUser, navigate]);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
       navigate('/login');
       return;
     }
 
     const fetchData = async () => {
       try {
-        // Fetch profile
-        const profRes = await fetch('/api/auth/me', {
-          headers: { 'X-User-Id': userId }
-        });
-        if (!profRes.ok) {
-          if (profRes.status === 401) {
-            handleLogout();
-            return;
-          }
-          throw new Error('Failed to load profile');
-        }
-        const profData = await profRes.json();
+        const profData = await authFetch('/auth/me', { method: 'GET' });
         setProfile(profData);
 
-        // Fetch tags
-        const tagsRes = await fetch('/api/tags/', {
-          headers: { 'X-User-Id': userId }
-        });
-        if (!tagsRes.ok) throw new Error('Failed to load tags');
-        const tagsData = await tagsRes.json();
-        setTags(tagsData);
+        const tagsResult = await authFetch('/tags/?page=1&per_page=50', { method: 'GET' });
+        setTags(tagsResult.items || tagsResult);
       } catch (err) {
+        if (err.status === 401) {
+          handleLogout();
+          return;
+        }
         setError(err.message);
       } finally {
         setLoading(false);
@@ -79,8 +90,41 @@ export default function Dashboard() {
     };
 
     fetchData();
-  }, [userId, navigate, handleLogout]);
+  }, [user, authLoading, navigate, handleLogout]);
 
+  useEffect(() => {
+    let currentUrl = null;
+
+    const loadQrPreview = async () => {
+      if (!previewTag) {
+        setQrPreviewUrl(null);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/tags/${previewTag.id}/qr`, {
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          throw new Error('Unable to load QR preview');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        currentUrl = url;
+        setQrPreviewUrl(url);
+      } catch (err) {
+        setError(err.message);
+      }
+    };
+
+    loadQrPreview();
+
+    return () => {
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+    };
+  }, [previewTag]);
 
   const handleCreateTag = async (e) => {
     e.preventDefault();
@@ -90,26 +134,15 @@ export default function Dashboard() {
     setSuccess(null);
 
     try {
-      const res = await fetch('/api/tags/', {
+      const data = await authFetch('/tags/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId
-        },
         body: JSON.stringify({ label: newLabel })
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to create tag');
-      }
 
       setTags([data, ...tags]);
       setNewLabel('');
       setSuccess('Tag created successfully!');
-      
-      // Auto-clear success message
+
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
       setError(err.message);
@@ -121,21 +154,10 @@ export default function Dashboard() {
   const handleStatusChange = async (tagId, newStatus) => {
     setError(null);
     try {
-      const res = await fetch(`/api/tags/${tagId}`, {
+      const updated = await authFetch(`/tags/${tagId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId
-        },
         body: JSON.stringify({ status: newStatus })
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || 'Failed to update tag status');
-      }
-
-      const updated = await res.json();
       setTags(tags.map(t => t.id === tagId ? updated : t));
     } catch (err) {
       setError(err.message);
@@ -156,20 +178,10 @@ export default function Dashboard() {
     setError(null);
 
     try {
-      const res = await fetch('/api/tags/sheet', {
+      const data = await authFetch('/tags/sheet', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId
-        },
         body: JSON.stringify({ tag_ids: selectedTags, layout })
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to initialize sheet job');
-      }
 
       pollJob(data.job_id);
     } catch (err) {
@@ -178,18 +190,36 @@ export default function Dashboard() {
     }
   };
 
-  const pollJob = async (id) => {
+  const fetchMessages = useCallback(async () => {
+    try {
+      setMessagesLoading(true);
+      const data = await authFetch('/tags/messages', { method: 'GET' });
+      setMessages(data.messages || []);
+    } catch {
+      // silent
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'inbox') fetchMessages();
+  }, [activeTab, fetchMessages]);
+
+  const pollJob = useCallback(async (id) => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
     const checkStatus = async () => {
       try {
-        const res = await fetch(`/api/jobs/${id}`, {
-          headers: { 'X-User-Id': userId }
+        const res = await fetch(`${API_BASE}/jobs/${id}`, {
+          credentials: 'include'
         });
 
-        // Completed returns the PDF byte file directly, which has application/pdf content type
         const contentType = res.headers.get('content-type');
         if (res.ok && contentType === 'application/pdf') {
           setJobStatus('completed');
-          // Download PDF
           const blob = await res.blob();
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -199,7 +229,7 @@ export default function Dashboard() {
           a.click();
           a.remove();
           setSelectedTags([]);
-          return true; // Stop polling
+          return true;
         }
 
         if (!res.ok) {
@@ -211,50 +241,51 @@ export default function Dashboard() {
           setJobStatus('processing');
         } else if (data.status === 'failed') {
           setJobStatus('failed');
-          return true; // Stop polling
+          return true;
         }
 
         return false;
       } catch (err) {
         setError(err.message);
         setJobStatus('failed');
-        return true; // Stop polling
+        return true;
       }
     };
 
-    // Poll every 1s
     const interval = setInterval(async () => {
       const stop = await checkStatus();
       if (stop) clearInterval(interval);
     }, 1000);
-  };
+    pollIntervalRef.current = interval;
+  }, []);
 
   const handleDownloadSinglePdf = (tagId) => {
-    const a = document.createElement('a');
-    a.href = `/api/tags/${tagId}/pdf?x-user-id=${userId}`; // Auth via query parameter is not natively supported by auth_stub but let's do fetch blob to attach headers
-    
-    // Proper download attaching X-User-Id headers:
-    fetch(`/api/tags/${tagId}/pdf`, {
-      headers: { 'X-User-Id': userId }
+    fetch(`${API_BASE}/tags/${tagId}/pdf`, {
+      credentials: 'include'
     })
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `tag_${tagId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    })
-    .catch(() => setError('Failed to download PDF'));
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Failed to download PDF');
+        }
+        return res.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `tag_${tagId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      })
+      .catch(() => setError('Failed to download PDF'));
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <div className="view-container loading-container">
-        <Loader2 className="spinner" size={48} color="#8b5cf6" />
-        <p style={{ marginTop: '1rem', color: 'var(--color-muted)' }}>Loading Workspace...</p>
+      <div className="loading-container">
+        <Loader2 className="spinner" size={48} color="#df71f7" />
+        <p style={{ color: 'var(--text-secondary)' }}>Loading Workspace...</p>
       </div>
     );
   }
@@ -262,301 +293,360 @@ export default function Dashboard() {
   const activeCount = tags.filter(t => t.status === 'active').length;
   const isFree = profile?.plan === 'free';
   const tagLimit = isFree ? 2 : '∞';
+  const tagLimitPercent = isFree ? Math.min((activeCount / 2) * 100, 100) : 50;
 
   return (
-    <div className="page-container">
-      {/* Header */}
-      <header className="dashboard-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            background: 'var(--accent-gradient)',
-            padding: '0.5rem',
-            borderRadius: '0.75rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <ShieldCheck size={24} color="#fff" />
+    <div className="app-container">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-icon">
+            <ShieldCheck size={20} />
           </div>
-          <div>
-            <h1 style={{ fontSize: '1.25rem' }}>QR Tag Manager</h1>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>Workspace</span>
+          <div className="brand-text">
+            <h1>TagMaster Pro</h1>
+            <span>Workspace</span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div className="user-badge">
-            <User size={16} />
-            <span>{profile?.email}</span>
-            <span className={`badge ${isFree ? 'badge-free' : 'badge-paid'}`}>
-              {profile?.plan}
-            </span>
+        <nav className="nav-menu">
+          <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+            <LayoutDashboard size={18} />
+            Dashboard
           </div>
-          <button onClick={handleLogout} className="logout-btn">
-            <LogOut size={16} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </header>
+          <div className={`nav-item ${activeTab === 'inbox' ? 'active' : ''}`} onClick={() => setActiveTab('inbox')}>
+            <MessageSquare size={18} />
+            Inbox {messages.length > 0 && <span className="badge-count">{messages.length}</span>}
+          </div>
+        </nav>
 
-      {/* Alert notifications */}
-      {error && (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.1)',
-          border: '1px solid rgba(239, 68, 68, 0.2)',
-          padding: '1rem',
-          borderRadius: '1rem',
-          color: 'var(--error)',
-          marginBottom: '2rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem'
-        }}>
-          <AlertTriangle size={20} />
-          <p>{error}</p>
-        </div>
-      )}
+        <div className="sidebar-bottom">
+          <div className="upgrade-card">
+            <h4>Storage</h4>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${tagLimitPercent}%` }}></div>
+            </div>
+            <p>{activeCount} / {tagLimit} active tags used</p>
+          </div>
 
-      {success && (
-        <div style={{
-          background: 'rgba(16, 185, 129, 0.1)',
-          border: '1px solid rgba(16, 185, 129, 0.2)',
-          padding: '1rem',
-          borderRadius: '1rem',
-          color: 'var(--success)',
-          marginBottom: '2rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem'
-        }}>
-          <ShieldCheck size={20} />
-          <p>{success}</p>
-        </div>
-      )}
-
-      {/* Stats Summary */}
-      <section className="stats-grid">
-        <div className="glass-card stat-card">
-          <span className="stat-label">Total Tags</span>
-          <div className="stat-value">{tags.length}</div>
-        </div>
-        <div className="glass-card stat-card">
-          <span className="stat-label">Active / Limit</span>
-          <div className="stat-value">
-            {activeCount} <span style={{ color: 'var(--color-muted)', fontSize: '1.5rem', fontWeight: 500 }}>/ {tagLimit}</span>
+          <div className="utility-nav">
+            <div className="nav-item" onClick={handleLogout}>
+              <LogOut size={16} />
+              Logout
+            </div>
           </div>
         </div>
-        <div className="glass-card stat-card">
-          <span className="stat-label">Status Check</span>
-          <div className="stat-value" style={{ fontSize: '1.75rem', marginTop: '0.75rem', color: 'var(--success)' }}>
-            All Secure
-          </div>
-        </div>
-      </section>
+      </aside>
 
-      {/* Main Grid */}
-      <div className="dashboard-grid">
-        {/* Left Side: Tag List */}
-        <div className="glass-card section-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.5rem' }}>Your Registered Items</h2>
-            
-            {/* Bulk Printing actions */}
-            {selectedTags.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <select 
-                  value={layout} 
-                  onChange={(e) => setLayout(parseInt(e.target.value))}
-                  className="status-select"
-                >
-                  <option value={6}>6 per page</option>
-                  <option value={12}>12 per page</option>
-                </select>
-                <button 
-                  onClick={handleGenerateSheet}
-                  className="btn btn-primary"
-                  style={{ padding: '0.5rem 1rem', width: 'auto', fontSize: '0.875rem' }}
-                  disabled={jobStatus === 'pending' || jobStatus === 'processing'}
-                >
-                  {jobStatus === 'pending' || jobStatus === 'processing' ? (
-                    <>
-                      <Loader2 className="spinner" size={16} />
-                      Printing...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={16} />
-                      Print Sheet ({selectedTags.length})
-                    </>
-                  )}
-                </button>
+      {/* Main Content */}
+      <main className="main-content">
+        {/* Header */}
+        <header className="top-header">
+          <div className="page-title">
+            <h2>{activeTab === 'inbox' ? 'Inbox' : 'Dashboard'}</h2>
+            <p>{activeTab === 'inbox' ? 'Messages from people who found your items' : 'Manage your registered items and tags'}</p>
+          </div>
+
+          <div className="user-controls">
+            <div className="user-profile">
+              <div className="user-info">
+                <div className="user-email">{profile?.email}</div>
+                <span className="plan-badge">{profile?.plan}</span>
+              </div>
+              <div className="avatar" style={{
+                background: `linear-gradient(135deg, var(--accent-magenta-light), var(--accent-magenta))`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                fontWeight: 600
+              }}>
+                {profile?.email?.charAt(0).toUpperCase() || <User size={18} />}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Notifications */}
+        {error && (
+          <div className="alert alert-error">
+            <AlertTriangle size={18} />
+            <p>{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success">
+            <ShieldCheck size={18} />
+            <p>{success}</p>
+          </div>
+        )}
+
+        {activeTab === 'inbox' ? (
+          <div className="panel">
+            <div className="panel-header">
+              <h3>Messages from Finders</h3>
+              <button className="btn-primary" style={{width:'auto',padding:'8px 16px',fontSize:'13px'}} onClick={fetchMessages} disabled={messagesLoading}>
+                {messagesLoading ? <Loader2 className="spinner" size={16} /> : null} Refresh
+              </button>
+            </div>
+            {messages.length === 0 ? (
+              <div className="empty-slot">
+                <MessageSquare size={36} />
+                <p>No messages yet.</p>
+                <p style={{fontSize:'12px'}}>When someone finds your item and sends a message, it will appear here.</p>
+              </div>
+            ) : (
+              <div className="item-list">
+                {messages.map((msg) => (
+                  <div key={msg.id} className="list-item" style={{flexDirection:'column',alignItems:'stretch',gap:'8px'}}>
+                    <div className="item-details">
+                      <div className="item-title-row">
+                        <h4>{msg.tag_label}</h4>
+                        <span className="badge active">New</span>
+                      </div>
+                    </div>
+                    <div style={{background:'var(--bg-tertiary)',padding:'12px',borderRadius:'8px',fontSize:'14px'}}>
+                      {msg.message || <em style={{color:'var(--text-secondary)'}}>No message</em>}
+                    </div>
+                    <div className="item-controls" style={{justifyContent:'space-between'}}>
+                      <a href={`tel:${msg.finder_phone}`} className="btn-primary" style={{width:'auto',padding:'8px 16px',fontSize:'13px',textDecoration:'none'}}>
+                        Call {msg.finder_phone}
+                      </a>
+                      <span style={{fontSize:'12px',color:'var(--text-secondary)'}}>
+                        {new Date(msg.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-
-          {tags.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'var(--color-muted)' }}>
-              <TagIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-              <p>No items registered yet.</p>
-              <p style={{ fontSize: '0.875rem' }}>Register a tag on the right side to get started.</p>
+        ) : (
+        <>
+        {/* Stats Row */}
+        <div className="stats-row">
+          <div className="stat-card">
+            <h3>Total Tags</h3>
+            <div className="stat-value">{tags.length}</div>
+          </div>
+          <div className="stat-card">
+            <h3>Active / Limit</h3>
+            <div className="stat-value">
+              {activeCount}
+              <span className="stat-sub">/ {tagLimit}</span>
             </div>
-          ) : (
-            <div>
-              {tags.map((tag) => (
-                <div key={tag.id} className="tag-list-item">
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <div className="checkbox-container">
+          </div>
+          <div className="stat-card">
+            <h3>Status Check</h3>
+            <div className="status-check">
+              <ShieldCheck size={20} />
+              All Secure
+            </div>
+          </div>
+        </div>
+
+        {/* Main Grid */}
+        <div className="dashboard-grid">
+          {/* Left Column */}
+          <div className="left-column">
+            <div className="panel">
+              <div className="panel-header">
+                <h3>Your Registered Items</h3>
+                {selectedTags.length > 0 && (
+                  <div className="bulk-actions">
+                    <select
+                      value={layout}
+                      onChange={(e) => setLayout(parseInt(e.target.value))}
+                      className="status-dropdown"
+                    >
+                      <option value={6}>6 per page</option>
+                      <option value={12}>12 per page</option>
+                    </select>
+                    <button
+                      onClick={handleGenerateSheet}
+                      className="btn-primary"
+                      style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}
+                      disabled={jobStatus === 'pending' || jobStatus === 'processing'}
+                    >
+                      {jobStatus === 'pending' || jobStatus === 'processing' ? (
+                        <><Loader2 className="spinner" size={16} /> Printing...</>
+                      ) : (
+                        <><Download size={16} /> Print Sheet ({selectedTags.length})</>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {tags.length === 0 ? (
+                <div className="empty-slot">
+                  <TagIcon size={36} />
+                  <p>No items registered yet.</p>
+                  <p style={{ fontSize: '12px' }}>Register a tag on the right to get started.</p>
+                </div>
+              ) : (
+                <div className="item-list">
+                  {tags.map((tag) => (
+                    <div key={tag.id} className="list-item">
                       <input
                         type="checkbox"
-                        className="custom-checkbox"
+                        className="item-checkbox"
                         checked={selectedTags.includes(tag.id)}
                         onChange={() => handleToggleSelect(tag.id)}
                       />
-                    </div>
-                    <div className="tag-item-info">
-                      <h3 style={{ fontSize: '1.1rem' }}>{tag.label}</h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span className={`badge badge-${tag.status}`}>
-                          {tag.status.replace('_', ' ')}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
-                          ID: {tag.id.slice(0, 8)}...
-                        </span>
+                      <div className="item-details">
+                        <div className="item-title-row">
+                          <h4>{tag.label}</h4>
+                          <span className={`badge ${tag.status}`}>
+                            {tag.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <span className="item-meta">ID: {tag.id.slice(0, 8)}...</span>
+                      </div>
+
+                      <div className="item-controls">
+                        <select
+                          value={tag.status}
+                          onChange={(e) => handleStatusChange(tag.id, e.target.value)}
+                          className="status-dropdown"
+                        >
+                          <option value="active">Active</option>
+                          <option value="paused">Paused</option>
+                          <option value="lost_confirmed">Lost</option>
+                        </select>
+
+                        <button
+                          onClick={() => setPreviewTag(tag)}
+                          className="icon-btn-secondary"
+                          title="View QR Code"
+                        >
+                          <QrCode size={18} />
+                        </button>
+
+                        <button
+                          onClick={() => handleDownloadSinglePdf(tag.id)}
+                          className="icon-btn-secondary"
+                          title="Download PDF"
+                        >
+                          <Download size={18} />
+                        </button>
+
+                        <a
+                          href={`/t/${tag.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="icon-btn-secondary"
+                          title="Public view page"
+                        >
+                          <ExternalLink size={18} />
+                        </a>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="tag-item-actions">
-                    <select
-                      value={tag.status}
-                      onChange={(e) => handleStatusChange(tag.id, e.target.value)}
-                      className="status-select"
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      <option value="active">Active</option>
-                      <option value="paused">Paused</option>
-                      <option value="lost_confirmed">Lost</option>
-                    </select>
-
-                    <button 
-                      onClick={() => setPreviewTag(tag)}
-                      className="icon-btn"
-                      title="View QR Code"
-                    >
-                      <QrCode size={18} />
-                    </button>
-
-                    <button 
-                      onClick={() => handleDownloadSinglePdf(tag.id)}
-                      className="icon-btn"
-                      title="Download PDF Tag"
-                    >
-                      <Download size={18} />
-                    </button>
-                    
-                    <a 
-                      href={`/t/${tag.id}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="icon-btn"
-                      title="Public view page"
-                    >
-                      <ExternalLink size={18} />
-                    </a>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Right Side: Create Tag Form */}
-        <div className="glass-card section-card">
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>Register New Tag</h2>
+          {/* Right Column */}
+          <div className="right-column">
+            <div className="panel">
+              <div className="panel-header">
+                <h3>Register New Tag</h3>
+              </div>
 
-          {isFree && activeCount >= 2 && (
-            <div style={{
-              background: 'rgba(139, 92, 246, 0.1)',
-              border: '1px solid rgba(139, 92, 246, 0.2)',
-              padding: '1rem',
-              borderRadius: '1rem',
-              marginBottom: '1.5rem',
-              fontSize: '0.875rem'
-            }}>
-              <p style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '0.25rem' }}>Free Tier Limit Reached</p>
-              <p style={{ color: 'var(--color-muted)' }}>
-                You have reached the maximum limit of 2 active tags. Pause an item to free up a slot, or upgrade.
+              {isFree && activeCount >= 2 && (
+                <div className="limit-banner">
+                  <p>Free Tier Limit Reached</p>
+                  <p>You have reached the maximum of 2 active tags. Pause an item to free up a slot, or upgrade.</p>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateTag}>
+                <div className="form-group">
+                  <label>Item Label</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Backpack, Work Keys"
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    className="form-control"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={creating || (isFree && activeCount >= 2)}
+                >
+                  {creating ? (
+                    <><Loader2 className="spinner" size={18} /> Registering...</>
+                  ) : (
+                    <><Plus size={18} /> Register Tag</>
+                  )}
+                </button>
+              </form>
+
+              <p className="disclaimer">
+                Each QR code is uniquely generated and encrypted. Your personal data remains private.
               </p>
             </div>
-          )}
 
-          <form onSubmit={handleCreateTag}>
-            <div className="form-group">
-              <label className="form-label">Item Label</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Backpack, Work Keys"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                className="input-field"
-              />
+            <div className="insights-panel">
+              <div className="insights-header">
+                <ShieldCheck size={18} color="var(--accent-magenta-light)" />
+                Pro Tip
+              </div>
+              <p>
+                Print your QR tags and attach them to valuables. When someone scans the code,
+                they&apos;ll be able to contact you <strong>without seeing your phone number</strong>.
+              </p>
+
             </div>
-
-            <button 
-              type="submit" 
-              className="btn btn-primary" 
-              style={{ marginTop: '1rem' }}
-              disabled={creating || (isFree && activeCount >= 2)}
-            >
-              {creating ? (
-                <>
-                  <Loader2 className="spinner" size={20} />
-                  Registering...
-                </>
-              ) : (
-                <>
-                  <Plus size={20} />
-                  Register Tag
-                </>
-              )}
-            </button>
-          </form>
+          </div>
         </div>
-      </div>
+
+        {/* Footer */}
+        <footer className="app-footer">
+          <p>&copy; {new Date().getFullYear()} TagMaster Pro. All rights reserved.</p>
+        </footer>
+        </>)}
+      </main>
 
       {/* QR Preview Modal */}
       {previewTag && (
         <div className="modal-overlay" onClick={() => setPreviewTag(null)}>
-          <div className="glass-card modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 style={{ fontSize: '1.25rem' }}>QR Code: {previewTag.label}</h2>
-              <button onClick={() => setPreviewTag(null)} className="icon-btn">
+              <h2>QR Code: {previewTag.label}</h2>
+              <button onClick={() => setPreviewTag(null)} className="modal-close">
                 <X size={18} />
               </button>
             </div>
-            
+
             <div style={{
               background: '#fff',
-              padding: '1.5rem',
-              borderRadius: '1rem',
+              padding: '16px',
+              borderRadius: '12px',
               display: 'inline-block',
-              margin: '1.5rem 0'
+              margin: '16px 0'
             }}>
-              <img 
-                src={`/api/tags/${previewTag.id}/qr?x-user-id=${userId}`} 
+              <img
+                src={qrPreviewUrl || ''}
                 alt="QR Code"
                 style={{ width: '220px', height: '220px', display: 'block' }}
               />
             </div>
 
-            <p style={{ fontSize: '0.875rem', color: 'var(--color-muted)', marginBottom: '1.5rem' }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Anyone who scans this QR code will see a form to contact you securely without revealing your phone number.
             </p>
 
-            <button 
+            <button
               onClick={() => handleDownloadSinglePdf(previewTag.id)}
-              className="btn btn-primary"
+              className="btn-primary"
             >
               <Download size={18} />
               Download Printable Tag (PDF)

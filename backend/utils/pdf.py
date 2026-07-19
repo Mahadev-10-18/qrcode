@@ -5,11 +5,10 @@ from io import BytesIO
 
 def tag_to_html(tag) -> str:
     """Return HTML snippet for a single tag with QR image and label."""
-    # Build URL for QR code
+    # Build URL for QR code — use frontend_url so the scanned QR opens the public page
     from ..config import settings
-    domain = settings.domain
 
-    qr_url = f"https://{domain}/t/{tag.id}"
+    qr_url = f"{settings.effective_qr_url}/t/{tag.id}"
     # Generate QR PNG in memory
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H)
     qr.add_data(qr_url)

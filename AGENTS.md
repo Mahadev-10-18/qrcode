@@ -9,7 +9,7 @@
 - **QR Generation**: `qrcode` Python library (QRCodeDetector for tests)
 - **PDF Generation**: xhtml2pdf
 - **Communication Relay**: Twilio Proxy (call/text with retry logic)
-- **Authentication**: Stub (X-User-Id header), JWT planned
+- **Authentication**: JWT bearer tokens with `Authorization: Bearer <token>`
 
 ## Database Schema (source of truth)
 ```

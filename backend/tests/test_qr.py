@@ -3,13 +3,15 @@ from fastapi import status
 
 
 @pytest.mark.asyncio
-async def test_qr_generation_and_decode(client, user_a, user_b):
+async def test_qr_generation_and_decode(client, user_a, user_b, auth_headers):
     from backend.config import settings
-    old_domain = settings.app_domain
-    settings.app_domain = "http://mydomain.com"
+    old_frontend = settings.frontend_url
+    old_qr_base = settings.qr_base_url
+    settings.frontend_url = "http://mydomain.com"
+    settings.qr_base_url = ""
 
     try:
-        headers_a = {"X-User-Id": str(user_a.id)}
+        headers_a = auth_headers(user_a)
         resp = await client.post("/tags/", json={"label": "my tag"}, headers=headers_a)
         assert resp.status_code == status.HTTP_201_CREATED
         tag_id = resp.json()["id"]
@@ -33,8 +35,9 @@ async def test_qr_generation_and_decode(client, user_a, user_b):
         )
 
         # Non-owner gets 404
-        headers_b = {"X-User-Id": str(user_b.id)}
+        headers_b = auth_headers(user_b)
         qr_resp_b = await client.get(f"/tags/{tag_id}/qr", headers=headers_b)
         assert qr_resp_b.status_code == status.HTTP_404_NOT_FOUND
     finally:
-        settings.app_domain = old_domain
+        settings.frontend_url = old_frontend
+        settings.qr_base_url = old_qr_base

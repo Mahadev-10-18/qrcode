@@ -8,8 +8,8 @@ from backend.models import Tag, TagStatus
 
 
 @pytest.mark.asyncio
-async def test_qr_caching_and_invalidation(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_qr_caching_and_invalidation(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
 
     # Create tag
     async with AsyncSession(engine) as session:
@@ -41,8 +41,8 @@ async def test_qr_caching_and_invalidation(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_pdf_sheet_async_generation(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_pdf_sheet_async_generation(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
 
     # Create 3 tags
     tag_ids = []
@@ -78,8 +78,8 @@ async def test_pdf_sheet_async_generation(client, user_a):
 
 
 @pytest.mark.asyncio
-async def test_pdf_sheet_duplicate_tags_detection(client, user_a):
-    headers = {"X-User-Id": str(user_a.id)}
+async def test_pdf_sheet_duplicate_tags_detection(client, user_a, auth_headers):
+    headers = auth_headers(user_a)
     
     # Create 2 tags
     tag_ids = []

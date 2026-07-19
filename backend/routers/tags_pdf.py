@@ -1,8 +1,10 @@
 from ..auth_stub import get_current_user
 from ..db import engine
 from ..utils.pdf import render_grid_html, html_to_pdf
+from ..utils.rate_limit import check_rate_limit, get_client_ip
+from ..utils.audit import log_audit
 from ..models import Tag, User, Job
-from fastapi import APIRouter, Depends, HTTPException, Response, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Response, status, BackgroundTasks, Request
 from typing import List
 import uuid
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -18,6 +20,14 @@ logger = logging.getLogger(__name__)
 class SheetRequest(BaseModel):
     tag_ids: List[str]
     layout: int = 6
+
+    @classmethod
+    def validate_tag_ids(cls, v: List[str]) -> List[str]:
+        if len(v) > 50:
+            raise ValueError("Maximum 50 tags per sheet")
+        if len(v) < 1:
+            raise ValueError("At least 1 tag required")
+        return v
 
 
 router = APIRouter(prefix="/tags", tags=["tags-pdf"])
@@ -69,7 +79,13 @@ async def generate_pdf_sheet_task(job_id: uuid.UUID, tag_ids: List[str], layout:
 
 
 @router.get("/{tag_id}/pdf", response_class=Response)
-async def get_tag_pdf(tag_id: str, current_user: User = Depends(get_current_user)):
+async def get_tag_pdf(tag_id: str, request: Request, current_user: User = Depends(get_current_user)):
+    await check_rate_limit(
+        key=f"user:{current_user.id}:pdf_download",
+        limit=20,
+        window_minutes=60,
+        error_msg="Too many PDF downloads. Try again later."
+    )
     try:
         tag_uuid = uuid.UUID(tag_id)
     except ValueError:
@@ -90,7 +106,14 @@ async def get_tag_pdf(tag_id: str, current_user: User = Depends(get_current_user
 
 
 @router.post("/sheet")
-async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
+async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks, request: Request, current_user: User = Depends(get_current_user)):
+    ip = get_client_ip(request)
+    await check_rate_limit(
+        key=f"user:{current_user.id}:sheet",
+        limit=10,
+        window_minutes=60,
+        error_msg="Too many sheet generation requests. Try again later."
+    )
     if req.layout not in (6, 12):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid layout")
         
@@ -124,7 +147,15 @@ async def post_tags_sheet(req: SheetRequest, background_tasks: BackgroundTasks, 
         
         # Enqueue background task
         background_tasks.add_task(generate_pdf_sheet_task, job.id, req.tag_ids, req.layout)
-        
+
+        await log_audit(
+            action="tag.sheet_generate",
+            user_id=str(current_user.id),
+            resource_type="tag",
+            detail=f"count={len(req.tag_ids)}, layout={req.layout}",
+            ip_address=get_client_ip(request),
+        )
+
         return {
             "job_id": str(job.id),
             "status": job.status,
